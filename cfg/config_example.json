@@ -1,0 +1,12 @@
+{
+  "bot" : {
+    "token" : "YOUR_BOT_TOKEN",
+    "botTextChannelId" : "YOUR_TEXT_CHANNEL_ID",
+    "botVoiceChannelId" : "YOUR_VOICE_CHANNEL_ID",
+    "guildId" : "YOUR_GUILD_ID"
+  },
+  "audio" : {
+    "deviceName" : "YOUR_DEVICE_NAME",
+    "bufferMultiplier" : -1
+  }
+}
