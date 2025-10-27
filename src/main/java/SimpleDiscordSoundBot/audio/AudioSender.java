@@ -8,6 +8,8 @@ import org.jetbrains.annotations.Nullable;
 import javax.sound.sampled.*;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * From the JDA documentation: "The provided audio data needs to be in the format: 48KHz 16bit stereo signed BigEndian PCM."
@@ -24,6 +26,7 @@ public class AudioSender implements AudioSendHandler {
 
     public void start() throws LineUnavailableException {
         SimpleLogger.info("Starting to look for matching audio lines. The required device must match the name set in the config and support 48 kHz stereo 16 bit audio.");
+        SimpleLogger.info("Selected audio device from config: \"" + _audioConfig.getDeviceName() + "\"");
 
         DataLine.Info requiredInfo = new DataLine.Info(TargetDataLine.class, _audioConfig);
 
@@ -83,10 +86,99 @@ public class AudioSender implements AudioSendHandler {
     @Nullable
     @Override
     public ByteBuffer provide20MsAudio() {
-        return ByteBuffer.wrap(_buffer).order(ByteOrder.nativeOrder());
+        return ByteBuffer.wrap(_buffer).order(ByteOrder.BIG_ENDIAN);
     }
 
     private void _fillBuffer() {
         _line.read(_buffer,0, _audioConfig.getNum20msBytes());
+    }
+
+    /**
+     * Lists all available audio input devices and their capabilities.
+     * This is useful for users to identify which device name to use in the config.
+     */
+    public static void listAvailableAudioDevices() {
+        SimpleLogger.info("=== Available Audio Input Devices ===");
+
+        // Create the required audio format (48kHz 16bit stereo signed BigEndian PCM)
+        AudioFormat requiredFormat = new AudioFormat(
+            AudioFormat.Encoding.PCM_SIGNED,
+            48000.0f,  // 48 kHz
+            16,        // 16 bit
+            2,         // stereo
+            4,         // frame size
+            48000.0f,  // frame rate
+            true       // big endian
+        );
+
+        Mixer.Info[] mixerInfos = AudioSystem.getMixerInfo();
+        List<String> compatibleDevices = new ArrayList<>();
+        List<String> incompatibleDevices = new ArrayList<>();
+
+        if (mixerInfos.length == 0) {
+            SimpleLogger.warn("No audio devices found on this system.");
+            return;
+        }
+
+        for (Mixer.Info mixerInfo : mixerInfos) {
+            try {
+                Mixer mixer = AudioSystem.getMixer(mixerInfo);
+                Line.Info[] targetLineInfos = mixer.getTargetLineInfo();
+
+                // Only consider devices that have target (input/capture) lines
+                if (targetLineInfos.length > 0) {
+                    String deviceName = mixerInfo.getName();
+                    String deviceDescription = mixerInfo.getDescription();
+                    boolean supportsRequiredFormat = false;
+
+                    // Check if this device supports the required format
+                    DataLine.Info requiredInfo = new DataLine.Info(TargetDataLine.class, requiredFormat);
+                    if (mixer.isLineSupported(requiredInfo)) {
+                        supportsRequiredFormat = true;
+                    }
+
+                    String deviceInfo = String.format(
+                        "  - Name: \"%s\"\n    Description: %s\n    Compatible with bot: %s",
+                        deviceName,
+                        deviceDescription,
+                        supportsRequiredFormat ? "YES ✓" : "NO ✗ (doesn't support 48kHz 16-bit stereo)"
+                    );
+
+                    if (supportsRequiredFormat) {
+                        compatibleDevices.add(deviceInfo);
+                    } else {
+                        incompatibleDevices.add(deviceInfo);
+                    }
+                }
+            } catch (Exception e) {
+                // Skip devices that throw exceptions
+            }
+        }
+
+        // Display compatible devices first
+        if (!compatibleDevices.isEmpty()) {
+            SimpleLogger.info("\nCompatible Audio Input Devices (recommended):");
+            for (String device : compatibleDevices) {
+                SimpleLogger.info(device);
+            }
+        }
+
+        // Then display incompatible devices
+        if (!incompatibleDevices.isEmpty()) {
+            SimpleLogger.info("\nOther Audio Input Devices (not compatible):");
+            for (String device : incompatibleDevices) {
+                SimpleLogger.info(device);
+            }
+        }
+
+        if (compatibleDevices.isEmpty() && incompatibleDevices.isEmpty()) {
+            SimpleLogger.warn("No audio input devices found. Please check your audio setup.");
+        } else if (compatibleDevices.isEmpty()) {
+            SimpleLogger.warn("\nWARNING: No compatible audio devices found!");
+            SimpleLogger.warn("Make sure you have a virtual audio cable installed that supports 48kHz 16-bit stereo.");
+        }
+
+        SimpleLogger.info("\n=== End of Audio Device List ===\n");
+        SimpleLogger.info("To use a device, copy its exact name (including quotes) to the 'deviceName' field in cfg/config.json");
     }
 }

@@ -31,6 +31,10 @@ public class DiscordBot {
         _textChannelId = config.botTextChannelId;
         _guildId = config.guildId;
 
+        // List all available audio devices to help users configure the bot
+        SimpleLogger.info("\nScanning for audio devices...");
+        AudioSender.listAvailableAudioDevices();
+
         _init();
     }
 
@@ -97,8 +101,10 @@ public class DiscordBot {
         _audioManager.setSelfMuted(false);
         _initialized = true;
 
-        String deviceName = ConfigDataContainer.getInstance().getAudioConfig().getDeviceName();
-        _sendMessage(String.format("SimpleDiscordSoundBot is now ready and capturing audio from `%s`!", deviceName));
+        if (ConfigDataContainer.getInstance().getBotConfig().sendStartupMessage) {
+            String deviceName = ConfigDataContainer.getInstance().getAudioConfig().getDeviceName();
+            _sendMessage(String.format("SimpleDiscordSoundBot is now ready and capturing audio from `%s`!", deviceName));
+        }
     }
 
     void _sendMessage(String message) {
