@@ -9,5 +9,11 @@
   "audio" : {
     "deviceName" : "YOUR_DEVICE_NAME",
     "bufferMultiplier" : -1
+  },
+  "statusMonitoring" : {
+    "enabled" : true,
+    "intervalSeconds" : 30,
+    "verboseMode" : false,
+    "statusFilePath" : "status.txt"
   }
 }

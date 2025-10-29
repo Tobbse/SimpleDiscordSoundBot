@@ -2,14 +2,15 @@ package SimpleDiscordSoundBot.audio;
 
 import SimpleDiscordSoundBot.config.AudioConfig;
 import SimpleDiscordSoundBot.logging.SimpleLogger;
+import SimpleDiscordSoundBot.status.AudioStatus;
 import net.dv8tion.jda.api.audio.AudioSendHandler;
-import org.jetbrains.annotations.Nullable;
 
 import javax.sound.sampled.*;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * From the JDA documentation: "The provided audio data needs to be in the format: 48KHz 16bit stereo signed BigEndian PCM."
@@ -18,6 +19,13 @@ public class AudioSender implements AudioSendHandler {
     private final AudioConfig _audioConfig;
     private TargetDataLine _line;
     private byte[] _buffer;
+
+    // Monitoring fields
+    private final AtomicLong _packetsProvided = new AtomicLong(0);
+    private final AtomicLong _lastReadDurationMs = new AtomicLong(0);
+    private volatile boolean _isBlocking = false;
+    private final AtomicLong _totalBytesRead = new AtomicLong(0);
+    private volatile long _lastPacketTime = System.currentTimeMillis();
 
     public AudioSender(AudioConfig audioConfig) {
         _audioConfig = audioConfig;
@@ -77,20 +85,47 @@ public class AudioSender implements AudioSendHandler {
     @Override
     public boolean canProvide() {
         if (_line == null) {
+            SimpleLogger.warn("canProvide() returning false - _line is null");
             return false;
         }
+        if (!_line.isOpen()) {
+            SimpleLogger.warn("canProvide() returning false - line is not open");
+            return false;
+        }
+
+        int available = _line.available();
+
+        if (available < _audioConfig.getNum20msBytes()) {
+            SimpleLogger.info("Not enough data available yet, returning false to avoid blocking");
+            return false;
+        }
+
         _fillBuffer();
-        return _line.isOpen();
+        _packetsProvided.incrementAndGet();
+        _lastPacketTime = System.currentTimeMillis();
+
+        return true;
     }
 
-    @Nullable
     @Override
     public ByteBuffer provide20MsAudio() {
         return ByteBuffer.wrap(_buffer).order(ByteOrder.BIG_ENDIAN);
     }
 
     private void _fillBuffer() {
-        _line.read(_buffer,0, _audioConfig.getNum20msBytes());
+        long startTime = System.currentTimeMillis();
+        int bytesRead = _line.read(_buffer, 0, _audioConfig.getNum20msBytes());
+        long duration = System.currentTimeMillis() - startTime;
+
+        _lastReadDurationMs.set(duration);
+        _totalBytesRead.addAndGet(bytesRead);
+
+        // Detect blocking condition
+        if (duration > 100) {
+            _isBlocking = true;
+        } else if (duration < 30) {
+            _isBlocking = false;
+        }
     }
 
     /**
@@ -180,5 +215,49 @@ public class AudioSender implements AudioSendHandler {
 
         SimpleLogger.info("\n=== End of Audio Device List ===\n");
         SimpleLogger.info("To use a device, copy its exact name (including quotes) to the 'deviceName' field in cfg/config.json");
+    }
+
+    // Monitoring methods
+    public AudioStatus getStatus() {
+        boolean lineOpen = _line != null && _line.isOpen();
+        boolean audioFlowing = lineOpen && (System.currentTimeMillis() - _lastPacketTime < 2000);
+        int bufferLevel = getBufferLevel();
+        long availableBytes = lineOpen ? _line.available() : 0;
+
+        return new AudioStatus(
+            lineOpen,
+            audioFlowing,
+            _packetsProvided.get(),
+            bufferLevel,
+            availableBytes,
+            _isBlocking,
+            _lastReadDurationMs.get(),
+            _totalBytesRead.get(),
+            _audioConfig.getDeviceName()
+        );
+    }
+
+    public boolean isAudioFlowing() {
+        return _line != null && _line.isOpen() && (System.currentTimeMillis() - _lastPacketTime < 2000);
+    }
+
+    public int getBufferLevel() {
+        if (_line == null || !_line.isOpen()) {
+            return 0;
+        }
+        int bufferSize = _line.getBufferSize();
+        int available = _line.available();
+        if (bufferSize <= 0) {
+            return 0;
+        }
+        return (int) ((double) (bufferSize - available) / bufferSize * 100);
+    }
+
+    public long getPacketsProvided() {
+        return _packetsProvided.get();
+    }
+
+    public void resetPacketCounter() {
+        _packetsProvided.set(0);
     }
 }

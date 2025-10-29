@@ -2,6 +2,7 @@ package SimpleDiscordSoundBot.loading;
 
 import SimpleDiscordSoundBot.config.BotConfig;
 import SimpleDiscordSoundBot.config.AudioConfig;
+import SimpleDiscordSoundBot.config.StatusMonitoringConfig;
 import SimpleDiscordSoundBot.logging.SimpleLogger;
 import org.apache.commons.io.IOUtils;
 import org.json.JSONException;
@@ -18,6 +19,7 @@ public class ConfigDataContainer {
 
     private BotConfig _botConfig;
     private AudioConfig _audioConfig;
+    private StatusMonitoringConfig _statusMonitoringConfig;
 
     private ConfigDataContainer(String configFilePath) {
         _loadConfigFile(configFilePath);
@@ -36,6 +38,14 @@ public class ConfigDataContainer {
 
             _botConfig = new BotConfig(configFileJson.getJSONObject("bot"));
             _audioConfig = new AudioConfig(configFileJson.getJSONObject("audio"));
+
+            // Load status monitoring config (optional section)
+            if (configFileJson.has("statusMonitoring")) {
+                _statusMonitoringConfig = new StatusMonitoringConfig(configFileJson.getJSONObject("statusMonitoring"));
+            } else {
+                // Create default config if not present
+                _statusMonitoringConfig = new StatusMonitoringConfig(new JSONObject());
+            }
         } catch (JSONException e) {
             SimpleLogger.logException(e, "JSON error while reading config file");
             System.exit(-2);
@@ -54,5 +64,9 @@ public class ConfigDataContainer {
 
     public AudioConfig getAudioConfig() {
         return _audioConfig;
+    }
+
+    public StatusMonitoringConfig getStatusMonitoringConfig() {
+        return _statusMonitoringConfig;
     }
 }

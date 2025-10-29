@@ -64,6 +64,9 @@ auth.json
 credentials.json
 cfg/config.json
 *_ignore*
+status.txt
+devices.txt
+.vscode
 
 # Database #
 ############
